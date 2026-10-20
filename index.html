@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kazle</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#777; --tile:#e8e8e8; --accent:#2e7d32; --err:#c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121212; --fg:#eee; --muted:#999; --tile:#2a2a2a; --accent:#66bb6a; --err:#ef5350; }
+  }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif;
+         display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+  h1 { letter-spacing:.3em; margin:1.2rem 0 .2rem; }
+  .sub { color:var(--muted); margin:0 0 1rem; text-align:center; padding:0 1rem; }
+  .row { display:flex; gap:.4rem; margin:.3rem 0; }
+  .tile { width:3rem; height:3rem; display:grid; place-items:center; background:var(--tile);
+          font-size:1.6rem; font-weight:700; text-transform:uppercase; border-radius:6px; }
+  .tile.hit { background:var(--accent); color:#fff; }
+  .tile.changed { outline:3px solid var(--accent); }
+  .target .tile { background:transparent; border:2px dashed var(--muted); }
+  #msg { min-height:1.5rem; color:var(--err); margin:.6rem 0; }
+  #msg.ok { color:var(--accent); font-weight:700; }
+  form { display:flex; gap:.5rem; }
+  input { font-size:1.2rem; width:7rem; text-transform:uppercase; padding:.4rem; text-align:center; }
+  button { font-size:1rem; padding:.4rem 1rem; }
+  #history { margin:1rem 0; }
+  footer { margin-top:auto; padding:1.5rem; color:var(--muted); text-align:center; }
+</style>
+</head>
+<body>
+  <h1>KAZLE</h1>
+  <p class="sub">Change one letter at a time, using real words, until you reach KAZA.</p>
+
+  <div class="row target" id="target"></div>
+  <div id="history"></div>
+
+  <form id="form" autocomplete="off">
+    <input id="guess" maxlength="4" placeholder="next word" autofocus>
+    <button>Go</button>
+  </form>
+  <div id="msg"></div>
+
+  <footer id="footer">Loading…</footer>
+
+<script>
+const TARGET = "kaza";
+const $ = id => document.getElementById(id);
+
+function oneApart(a, b) {
+  let diff = 0;
+  for (let i = 0; i < 4; i++) if (a[i] !== b[i]) diff++;
+  return diff === 1;
+}
+
+// Breadth-first search outward from TARGET: dist[w] = fewest steps from w to kaza.
+function bfs(words) {
+  const dist = new Map([[TARGET, 0]]);
+  const queue = [TARGET];
+  for (let h = 0; h < queue.length; h++) {
+    const u = queue[h];
+    for (const v of words) {
+      if (!dist.has(v) && oneApart(u, v)) { dist.set(v, dist.get(u) + 1); queue.push(v); }
+    }
+  }
+  return dist;
+}
+
+// Same date -> same number -> same word for everybody.
+function dailyIndex(n) {
+  const d = new Date();
+  const key = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  let x = key * 2654435761 % 4294967296;
+  x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13;
+  return x % n;
+}
+
+function renderWord(el, word, prev) {
+  el.innerHTML = "";
+  for (let i = 0; i < 4; i++) {
+    const t = document.createElement("div");
+    t.className = "tile" + (word[i] === TARGET[i] ? " hit" : "") + (prev && prev[i] !== word[i] ? " changed" : "");
+    t.textContent = word[i];
+    el.appendChild(t);
+  }
+}
+
+async function main() {
+  const text = await (await fetch("words.txt")).text();
+  const words = [...new Set(text.split(/\s+/).map(w => w.toLowerCase()).filter(w => /^[a-z]{4}$/.test(w)))];
+  const wordSet = new Set(words);
+  const dist = bfs(words);
+
+  // Daily start word: reachable, and between 3 and 8 steps away.
+  const candidates = words.filter(w => dist.has(w) && dist.get(w) >= 3 && dist.get(w) <= 8).sort();
+  const start = candidates[dailyIndex(candidates.length)];
+  const best = dist.get(start);
+
+  renderWord($("target"), TARGET);
+  let current = start, moves = 0, done = false;
+  const history = $("history");
+  const addRow = (w, prev) => {
+    const r = document.createElement("div"); r.className = "row";
+    renderWord(r, w, prev); history.appendChild(r);
+  };
+  addRow(current);
+  $("footer").textContent = `Today's word: ${start.toUpperCase()} → KAZA. Most efficient route: ${best} steps.`;
+
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    if (done) return;
+    const msg = $("msg"); msg.className = ""; msg.textContent = "";
+    const g = $("guess").value.trim().toLowerCase();
+    if (!/^[a-z]{4}$/.test(g)) { msg.textContent = "Enter a 4-letter word."; return; }
+    if (!wordSet.has(g)) { msg.textContent = "Not in the word list."; return; }
+    if (!oneApart(current, g)) { msg.textContent = "Change exactly one letter."; return; }
+    addRow(g, current); current = g; moves++; $("guess").value = "";
+    if (g === TARGET) {
+      done = true; msg.className = "ok";
+      msg.textContent = moves === best ? `Perfect! ${moves} steps, the minimum.`
+                                       : `Solved in ${moves} steps (best is ${best}).`;
+    }
+  });
+}
+main().catch(() => { $("footer").textContent = "Couldn't load words.txt (run a local server, see README)."; });
+</script>
+</body>
+</html>
