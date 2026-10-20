@@ -54,14 +54,22 @@ function oneApart(a, b) {
 }
 
 // Breadth-first search outward from TARGET: dist[w] = fewest steps from w to kaza.
+// Words are bucketed by "pattern" (e.g. "ka_a") so neighbours are found without comparing every pair.
 function bfs(words) {
+  const buckets = new Map();
+  const patterns = w => [0, 1, 2, 3].map(i => w.slice(0, i) + "_" + w.slice(i + 1));
+  for (const w of words)
+    for (const p of patterns(w)) {
+      if (!buckets.has(p)) buckets.set(p, []);
+      buckets.get(p).push(w);
+    }
   const dist = new Map([[TARGET, 0]]);
   const queue = [TARGET];
   for (let h = 0; h < queue.length; h++) {
     const u = queue[h];
-    for (const v of words) {
-      if (!dist.has(v) && oneApart(u, v)) { dist.set(v, dist.get(u) + 1); queue.push(v); }
-    }
+    for (const p of patterns(u))
+      for (const v of buckets.get(p) || [])
+        if (!dist.has(v)) { dist.set(v, dist.get(u) + 1); queue.push(v); }
   }
   return dist;
 }
