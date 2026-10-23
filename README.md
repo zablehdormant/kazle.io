@@ -1,4 +1,4 @@
-# kazle
+# kazle.io
 KAZLE!!! KAZA!!
 the hit game that cleared digital shelves KAZLE!!! is online here 
 play kazle today here now right now please
